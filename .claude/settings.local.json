@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(if exist .next rmdir /s /q .next)",
+      "Bash(pnpm run dev)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)"
+    ]
+  }
+}

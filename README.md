@@ -7,3 +7,9 @@ cd space-dodge
 npm install three @react-three/fiber @react-three/drei zustand
 npm install @types/three --save-dev
 ```
+
+
+### bugfix
+```
+gameStore.ts 中的状态字段与 Game.tsx 需要的不匹配
+```
