@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "太空躲避者 - Space Dodge",
-  description: "一个酷炫的3D太空躲避游戏",
+  title: "星际裂隙 - Space Dodge",
+  description: "写实科幻像素融合的 roguelike 太空射击原型",
 };
 
 export default function RootLayout({
