@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useGameStore } from '@/stores/gameStore'
+import { levelConfig } from '@/lib/game-data'
 
 const colors = {
   panel: 'rgba(10,12,20,0.75)'
@@ -9,7 +10,7 @@ const colors = {
 const textMap = {
   zh: {
     title: '星际裂隙',
-    subtitle: 'WASD 移动 · 鼠标瞄准 · 自动开火',
+    subtitle: 'WASD 移动 · 左键点射/连射 · 右键蓄力 · 空格闪避',
     start: '开始作战',
     pause: '暂停',
     resume: '继续',
@@ -23,11 +24,15 @@ const textMap = {
     buffs: '临时增益',
     leaderboard: '排行榜',
     name: '代号',
-    lang: '语言'
+    lang: '语言',
+    liveware: 'LiveWare',
+    progress: '进度',
+    boss: 'BOSS',
+    bossIncoming: 'BOSS 即将到来'
   },
   en: {
     title: 'Stellar Rift',
-    subtitle: 'WASD Move · Mouse Aim · Auto Fire',
+    subtitle: 'WASD Move · LMB Tap/Auto · RMB Charge · Space Dodge',
     start: 'Engage',
     pause: 'Pause',
     resume: 'Resume',
@@ -41,7 +46,11 @@ const textMap = {
     buffs: 'Buffs',
     leaderboard: 'Leaderboard',
     name: 'Callsign',
-    lang: 'Lang'
+    lang: 'Lang',
+    liveware: 'LiveWare',
+    progress: 'Progress',
+    boss: 'BOSS',
+    bossIncoming: 'Boss Incoming'
   }
 }
 
@@ -54,6 +63,7 @@ export default function GameUI() {
     highScore,
     kills,
     timeSec,
+    bossPhase,
     language,
     playerName,
     activeItems,
@@ -65,6 +75,18 @@ export default function GameUI() {
   } = useGameStore()
 
   const text = textMap[language]
+  const progress = useMemo(() => {
+    const levelStart = (level - 1) * levelConfig.waveDurationSec
+    const raw = (timeSec - levelStart) / levelConfig.waveDurationSec
+    return Math.min(1, Math.max(0, raw))
+  }, [level, timeSec])
+
+  const bossHint =
+    bossPhase !== null
+      ? `${text.boss} ${bossPhase}`
+      : level % levelConfig.bossEvery === 0
+        ? text.bossIncoming
+        : text.boss
 
   useEffect(() => {
     fetch('/api/leaderboard')
@@ -101,6 +123,19 @@ export default function GameUI() {
           >
             {phase === 'paused' ? text.resume : text.pause}
           </button>
+        </div>
+      </div>
+
+      <div className="absolute top-3 left-1/2 z-20 w-[460px] max-w-[90vw] -translate-x-1/2 rounded-full px-4 py-2 text-xs text-gray-200" style={{ background: colors.panel }}>
+        <div className="flex items-center gap-3">
+          <span className="text-cyan-300 uppercase tracking-widest">{text.liveware}</span>
+          <span className="text-gray-400">{text.progress}</span>
+          <div className="flex-1">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-black/60">
+              <div className="h-full rounded-full bg-cyan-400" style={{ width: `${progress * 100}%` }} />
+            </div>
+          </div>
+          <span className="text-amber-200">{bossHint}</span>
         </div>
       </div>
 

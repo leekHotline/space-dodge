@@ -31,6 +31,7 @@ export interface EnemyDefinition {
   baseSpeed: number
   baseDamage: number
   behavior: string
+  size?: number
 }
 
 export const items: ItemDefinition[] = [
@@ -39,24 +40,24 @@ export const items: ItemDefinition[] = [
     name: { zh: '星核电容', en: 'Star Capacitor' },
     type: 'permanent',
     tags: ['energy', 'crit'],
-    description: { zh: '能量伤害+12%，暴击+3%', en: 'Energy damage +12%, crit +3%' },
-    stats: { energyDamagePct: 12, critPct: 3 }
+    description: { zh: '能量伤害+12%，暴击+3%，弹速+8%', en: 'Energy damage +12%, crit +3%, projectile speed +8%' },
+    stats: { energyDamagePct: 12, critPct: 3, bulletSpeedPct: 8 }
   },
   {
     id: 'I02',
     name: { zh: '裂隙喷口', en: 'Rift Thruster' },
     type: 'permanent',
     tags: ['mobility'],
-    description: { zh: '移速+12%，闪避窗口+0.08s', en: 'Move speed +12%, dodge window +0.08s' },
-    stats: { moveSpeedPct: 12, dodgeWindowMs: 80 }
+    description: { zh: '移速+12%，闪避窗口+0.08s，引擎尾迹增强', en: 'Move speed +12%, dodge window +0.08s, stronger engine trail' },
+    stats: { moveSpeedPct: 12, dodgeWindowMs: 80, trailPct: 35 }
   },
   {
     id: 'I03',
     name: { zh: '星图陀螺', en: 'Star Gyro' },
     type: 'permanent',
     tags: ['precision'],
-    description: { zh: '扩散-20%，精准+15%', en: 'Spread -20%, accuracy +15%' },
-    stats: { spreadPct: -20, accuracyPct: 15 }
+    description: { zh: '扩散-20%，精准+15%，弹丸更细', en: 'Spread -20%, accuracy +15%, slimmer shots' },
+    stats: { spreadPct: -20, accuracyPct: 15, bulletSizePct: -10 }
   },
   {
     id: 'I04',
@@ -71,24 +72,24 @@ export const items: ItemDefinition[] = [
     name: { zh: '破城楔', en: 'Siege Spike' },
     type: 'permanent',
     tags: ['burst'],
-    description: { zh: '精英/首领伤害+20%', en: 'Elite/Boss damage +20%' },
-    stats: { eliteBossDamagePct: 20 }
+    description: { zh: '精英/首领伤害+20%，弹速+10%', en: 'Elite/Boss damage +20%, projectile speed +10%' },
+    stats: { eliteBossDamagePct: 20, bulletSpeedPct: 10 }
   },
   {
     id: 'I06',
     name: { zh: '陨铁铠', en: 'Meteor Armor' },
     type: 'permanent',
     tags: ['defense'],
-    description: { zh: '护盾上限+30%', en: 'Shield cap +30%' },
-    stats: { shieldCapPct: 30 }
+    description: { zh: '护盾上限+30%，护甲光环', en: 'Shield cap +30%, armor aura' },
+    stats: { shieldCapPct: 30, shipGlowPct: 35, shipScalePct: 6 }
   },
   {
     id: 'I07',
     name: { zh: '幽蓝核心', en: 'Azure Core' },
     type: 'permanent',
     tags: ['crit'],
-    description: { zh: '暴击伤害+35%', en: 'Crit damage +35%' },
-    stats: { critDamagePct: 35 }
+    description: { zh: '暴击伤害+35%，弹丸扩大', en: 'Crit damage +35%, larger shots' },
+    stats: { critDamagePct: 35, bulletSizePct: 18 }
   },
   {
     id: 'I08',
@@ -111,8 +112,8 @@ export const items: ItemDefinition[] = [
     name: { zh: '光滑石', en: 'Polished Stone' },
     type: 'permanent',
     tags: ['defense', 'mobility'],
-    description: { zh: '移动时受到伤害-10%', en: 'Take 10% less damage while moving' },
-    stats: { movingDamageReducePct: 10 }
+    description: { zh: '移动时受到伤害-10%，机体更轻盈', en: 'Take 10% less damage while moving, lighter frame' },
+    stats: { movingDamageReducePct: 10, shipScalePct: -6 }
   },
   {
     id: 'I11',
@@ -143,15 +144,6 @@ export const enemies: EnemyDefinition[] = [
     baseSpeed: 2.2,
     baseDamage: 10,
     behavior: 'charge'
-  },
-  {
-    id: 'E02',
-    name: { zh: '尘环蠕群', en: 'Dust Swarm' },
-    family: 'space',
-    baseHp: 20,
-    baseSpeed: 2.6,
-    baseDamage: 6,
-    behavior: 'swarm'
   },
   {
     id: 'E03',
@@ -206,6 +198,66 @@ export const enemies: EnemyDefinition[] = [
     baseSpeed: 1.1,
     baseDamage: 9,
     behavior: 'buffer'
+  },
+  {
+    id: 'E09',
+    name: { zh: '离子狙击手', en: 'Ion Sniper' },
+    family: 'space',
+    baseHp: 45,
+    baseSpeed: 1.2,
+    baseDamage: 20,
+    behavior: 'sniper',
+    size: 20
+  },
+  {
+    id: 'E10',
+    name: { zh: '裂片甲虫', en: 'Shrapnel Beetle' },
+    family: 'space',
+    baseHp: 35,
+    baseSpeed: 2.4,
+    baseDamage: 9,
+    behavior: 'sprayer',
+    size: 20
+  },
+  {
+    id: 'E11',
+    name: { zh: '引力轨道体', en: 'Grav Orbiter' },
+    family: 'space',
+    baseHp: 50,
+    baseSpeed: 1.6,
+    baseDamage: 8,
+    behavior: 'orbit',
+    size: 18
+  },
+  {
+    id: 'E12',
+    name: { zh: '灰烬轰炸者', en: 'Cinder Bomber' },
+    family: 'old-testament',
+    baseHp: 80,
+    baseSpeed: 1.0,
+    baseDamage: 14,
+    behavior: 'bomber',
+    size: 26
+  },
+  {
+    id: 'E13',
+    name: { zh: '裂隙跃迁者', en: 'Rift Leaper' },
+    family: 'old-testament',
+    baseHp: 55,
+    baseSpeed: 2.1,
+    baseDamage: 12,
+    behavior: 'leap',
+    size: 22
+  },
+  {
+    id: 'E14',
+    name: { zh: '虚无主教', en: 'Null Bishop' },
+    family: 'old-testament',
+    baseHp: 90,
+    baseSpeed: 1.0,
+    baseDamage: 10,
+    behavior: 'shielded',
+    size: 28
   }
 ]
 
@@ -222,8 +274,8 @@ export const levelConfig = {
 }
 
 export const dropConfig = {
-  normalDropChance: 0.12,
-  eliteDropChance: 0.35,
+  normalDropChance: 0.35,
+  eliteDropChance: 0.7,
   bossGuaranteed: true,
   itemWeights: {
     permanent: 0.7,

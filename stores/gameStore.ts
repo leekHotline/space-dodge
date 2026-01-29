@@ -18,6 +18,7 @@ interface GameState {
   highScore: number
   kills: number
   timeSec: number
+  bossPhase: number | null
   seed: string
   language: Language
   playerName: string
@@ -29,6 +30,7 @@ interface GameState {
   endGame: () => void
   setLevel: (level: number) => void
   setTimeSec: (timeSec: number) => void
+  setBossPhase: (phase: number | null) => void
   addScore: (amount: number) => void
   addKill: () => void
   addItem: (item: ActiveItem) => void
@@ -48,6 +50,7 @@ export const useGameStore = create<GameState>()(
       highScore: 0,
       kills: 0,
       timeSec: 0,
+      bossPhase: null,
       seed: randomSeed(),
       language: 'zh',
       playerName: 'Pilot',
@@ -60,6 +63,7 @@ export const useGameStore = create<GameState>()(
           score: 0,
           kills: 0,
           timeSec: 0,
+          bossPhase: null,
           seed: randomSeed(),
           activeItems: []
         })
@@ -78,6 +82,7 @@ export const useGameStore = create<GameState>()(
 
       setLevel: (level) => set({ level }),
       setTimeSec: (timeSec) => set({ timeSec }),
+      setBossPhase: (phase) => set({ bossPhase: phase }),
       addScore: (amount) => set((state) => ({ score: state.score + amount })),
       addKill: () => set((state) => ({ kills: state.kills + 1 })),
 

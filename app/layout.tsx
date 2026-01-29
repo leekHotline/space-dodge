@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from "next"
+import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "星际裂隙 - Space Dodge",
-  description: "写实科幻像素融合的 roguelike 太空射击原型",
-};
+  title: "星际闪避 - Space Dodge",
+  description: "以游戏性为核心的太空肉鸽射击体验，让快乐持续、成长可感。",
+}
 
 export default function RootLayout({
   children,
@@ -12,8 +12,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh">
-      <body className="overflow-hidden">{children}</body>
+    <html lang="zh-CN">
+      <body className="min-h-screen bg-[#f7f7fb] text-slate-900">{children}</body>
     </html>
-  );
+  )
 }

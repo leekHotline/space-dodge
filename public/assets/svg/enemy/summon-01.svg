@@ -1,0 +1,11 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <g stroke="var(--c1, #5ef2ff)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="32 12 44 20 44 36 32 44 20 36 20 20" fill="var(--c2, #0b1220)"/>
+    <circle cx="32" cy="10" r="3" fill="var(--c3, #ffd166)"/>
+    <circle cx="10" cy="32" r="3" fill="var(--c3, #ffd166)"/>
+    <circle cx="54" cy="32" r="3" fill="var(--c3, #ffd166)"/>
+    <path d="M20 28 L10 32"/>
+    <path d="M44 28 L54 32"/>
+    <path d="M32 12 L32 10"/>
+  </g>
+</svg>

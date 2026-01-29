@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <g stroke="var(--c1, #5ef2ff)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="32 14 46 24 42 44 32 50 22 44 18 24" fill="var(--c2, #0b1220)"/>
+    <path d="M12 32 A20 20 0 0 1 52 32" stroke="var(--c3, #ffd166)"/>
+    <path d="M16 38 L48 38"/>
+  </g>
+</svg>
