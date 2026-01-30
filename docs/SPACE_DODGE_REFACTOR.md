@@ -1,4 +1,27 @@
+<!-- CODEX RUNNER INSTRUCTIONS (DO NOT REMOVE) -->
+You are an autonomous coding agent.
+Start with the FIRST unchecked milestone (M0).
+Keep working until the LAST milestone is completed.
+Do NOT ask questions.
+Do NOT stop unless all milestones are done.
+For each milestone:
+- Modify code
+- Run pnpm -s lint, pnpm -s typecheck, pnpm -s build, pnpm -s test
+- Fix failures until all pass
+- git commit with message "milestone: <id>"
+- Mark checkbox [x] in this file
+Then continue automatically.
+<!-- END CODEX INSTRUCTIONS -->
 # Space Dodge 重构方案（Roguelike 原型）
+
+## 0. Commands (source of truth)
+- Package manager: pnpm
+- Install: pnpm i
+- Dev: pnpm dev
+- Build: pnpm build
+- Lint: pnpm lint
+- Typecheck: pnpm typecheck
+- Test (vitest): pnpm test  （注意：目前 vitest 已安装但用例可能为空/未接入，必要时用 build/typecheck 作为闸门）
 
 ## 1. 目标与范围
 - 平台：Web 桌面端浏览器
@@ -150,3 +173,13 @@ CREATE TABLE IF NOT EXISTS runs (
 - 完整成长系统与 meta 进度  
 - 音效与配乐
 
+## 9.1 Milestone Checklist (for Codex Runner)
+- [x] M0: 建立测试闸门与CI级验证命令：确保 pnpm lint / pnpm typecheck / pnpm build 可运行；若 pnpm test 未接入则补一条最小 vitest 用例(1个)让 pnpm test 有效
+- [x] M1a: 数据与API（静态版）：实现 /api/items /api/enemies /api/config 三个 GET 端点，返回 12 道具与 8 敌人数据（与文档一致），并在前端能拉取并渲染为调试面板
+- [x] M1b: 核心玩法骨架：实现关卡推进（每关2-3分钟配置）、敌人刷新权重、击杀/掉落的基础循环；先用占位SVG素材也可，但结构要可替换
+- [ ] M1c: 掉落与选择：实现道具掉落光柱/拾取反馈；关卡结束给出2-3条路线选择（不同关卡配置），路线可汇合
+- [ ] M1d: Run 记录：实现 POST /api/run 与 Neon PostgreSQL runs 表接入（migration/初始化说明），能在结束时提交 run（分数/关卡/击杀/时长/seed/items）
+- [ ] M1e: Leaderboard：实现 GET /api/leaderboard Top50（按score降序），前端排行榜页面展示
+- [ ] M1f: 双语UI最小实现：抽离文案字典（中/英），关键页面（主界面/升级选择/排行榜）可切换语言
+- [ ] M2: 道具组合触发：实现至少2条组合规则（I01+I07、I04+I08），并有明显的特效/数值反馈；添加至少2个Boss机制/阶段（可简化）
+- [ ] M3: 视效与反馈升级：加入击杀特效/连击反馈/经验条升级戏剧性效果；接入基础音效（可用占位资源）

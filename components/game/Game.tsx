@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGameStore } from '@/stores/gameStore'
 import { dropConfig, enemies as enemyPool, items as itemPool, levelConfig } from '@/lib/game-data'
+import { audioManager } from '@/lib/audio'
 
 type Vector2 = { x: number; y: number }
 
@@ -56,6 +57,17 @@ interface Pickup {
   y: number
   vy: number
   radius: number
+}
+
+// 光柱特效 (M1c)
+interface LightPillar {
+  x: number
+  y: number
+  life: number
+  maxLife: number
+  color: string
+  width: number
+  height: number
 }
 
 interface EchoShot {
@@ -177,7 +189,12 @@ const trimArray = <T,>(items: T[], max: number) => {
   if (items.length > max) items.splice(0, items.length - max)
 }
 
-const getItemById = (id: string) => itemPool.find((item) => item.id === id)
+const itemMap = new Map(itemPool.map((item) => [item.id, item]))
+const itemPoolByType = {
+  permanent: itemPool.filter((item) => item.type === 'permanent'),
+  buff: itemPool.filter((item) => item.type === 'buff')
+}
+const getItemById = (id: string) => itemMap.get(id)
 const enemyMap = new Map(enemyPool.map((enemy) => [enemy.id, enemy]))
 
 const bossDef = {
@@ -199,6 +216,20 @@ const weightedPick = (entries: Array<{ id: string; weight: number }>) => {
     if (roll <= acc) return entry.id
   }
   return entries[0]?.id ?? ''
+}
+
+const buildEnemyWeights = (level: number) => {
+  const familyWeights: Record<string, number> = levelConfig.enemyWeights ?? {}
+  const levelBias = Math.min(0.6, Math.max(0, (level - 1) * 0.05))
+  return enemyPool.map((enemy) => {
+    const baseWeight = enemy.weight ?? 1
+    const familyWeight = familyWeights[enemy.family] ?? 1
+    const bias = enemy.family === 'old-testament' ? 1 + levelBias : 1
+    return {
+      id: enemy.id,
+      weight: baseWeight * familyWeight * bias
+    }
+  })
 }
 
 const buildStarField = (width: number, height: number): StarField => {
@@ -235,7 +266,8 @@ const buildStarField = (width: number, height: number): StarField => {
   }
 }
 
-const computeStats = (activeItemIds: string[], timeSec: number) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const computeStats = (activeItemIds: string[], _timeSec: number) => {
   const activeItems = activeItemIds.map(getItemById).filter(Boolean)
   let fireRate = levelConfig.baseFireRate
   let moveSpeed = levelConfig.baseMoveSpeed
@@ -283,11 +315,24 @@ const computeStats = (activeItemIds: string[], timeSec: number) => {
     if (item.stats.trailPct) trailStrength += item.stats.trailPct
   })
 
+  // 基于 tags 的组合效果
   if (tags.has('energy') && tags.has('crit')) {
     critChance += 5
   }
   if (tags.has('clone') && tags.has('echo')) {
     cloneChance += 5
+  }
+
+  // 道具组合效果 (M2)
+  const itemIds = activeItems.map(i => i?.id).filter(Boolean)
+  // I01(星能电容) + I07(蔚蓝核心) = 额外 +5% 暴击率
+  if (itemIds.includes('I01') && itemIds.includes('I07')) {
+    critChance += 5
+  }
+  // I04(量子镜像) + I08(回声线圈) = 回声弹 50% 概率复制
+  let echoCloneChance = 0
+  if (itemIds.includes('I04') && itemIds.includes('I08')) {
+    echoCloneChance = 50
   }
 
   let shipAccent = colors.accent
@@ -324,7 +369,8 @@ const computeStats = (activeItemIds: string[], timeSec: number) => {
     trailStrength,
     dodgeWindowMs,
     shipAccent,
-    shotColor
+    shotColor,
+    echoCloneChance
   }
 }
 
@@ -337,7 +383,6 @@ export default function Game() {
     phase,
     level,
     score,
-    highScore,
     kills,
     timeSec,
     language,
@@ -367,9 +412,12 @@ export default function Game() {
   })
 
   const bulletsRef = useRef<Bullet[]>([])
+  const spawnedBulletsRef = useRef<Bullet[]>([])
   const enemiesRef = useRef<EnemyEntity[]>([])
+  const deadEnemiesRef = useRef<EnemyEntity[]>([])
   const pickupsRef = useRef<Pickup[]>([])
   const echoShotsRef = useRef<EchoShot[]>([])
+  const lightPillarsRef = useRef<LightPillar[]>([])
   const keysRef = useRef(new Set<string>())
   const mouseRef = useRef<Vector2>({ x: 480, y: 0 })
   const leftDownRef = useRef(false)
@@ -391,6 +439,15 @@ export default function Game() {
   const flashesRef = useRef<FlashFx[]>([])
   const floatTextsRef = useRef<FloatText[]>([])
   const starFieldRef = useRef<StarField>({ width: 0, height: 0, layers: [], dust: [], bandAngle: -0.35 })
+  const gradientCacheRef = useRef({
+    width: 0,
+    height: 0,
+    bandWidth: 0,
+    bandHeight: 0,
+    coreHeight: 0,
+    bandGradient: null as CanvasGradient | null,
+    coreGradient: null as CanvasGradient | null
+  })
   const shootingStarsRef = useRef<ShootingStar[]>([])
   const lastUiUpdateRef = useRef(0)
   const lastBossPhaseRef = useRef<number | null>(null)
@@ -551,6 +608,7 @@ export default function Game() {
         expiresAt
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, canvasSize])
 
   useEffect(() => {
@@ -580,7 +638,7 @@ export default function Game() {
     const update = (delta: number, nowSec: number) => {
       const player = playerRef.current
       const stats = computeStats(activeItemIds, nowSec)
-      const overloadActive = activeItemIds.includes('I11')
+      const overloadActive = stats.overheatActive
       if (!overloadActive && overloadActiveRef.current) {
         overheatUntilRef.current = timeRef.current + 3
       }
@@ -637,16 +695,23 @@ export default function Game() {
           dodgeCooldownRef.current = nowSec + DODGE_COOLDOWN_SEC
           staminaRef.current = Math.max(0, staminaRef.current - DODGE_COST)
           player.invulnUntil = Math.max(player.invulnUntil, nowSec + dodgeDuration)
+          audioManager.play('dodge')
         }
       }
 
       if (isDodging) {
         trailRef.current.push({ x: player.x, y: player.y, ttl: 0.25 })
       }
-      trailRef.current = trailRef.current.filter((trail) => {
+      const trails = trailRef.current
+      let trailWriteIndex = 0
+      for (let i = 0; i < trails.length; i += 1) {
+        const trail = trails[i]
         trail.ttl -= delta
-        return trail.ttl > 0
-      })
+        if (trail.ttl > 0) {
+          trails[trailWriteIndex++] = trail
+        }
+      }
+      trails.length = trailWriteIndex
       if (!isDodging && (inputActive || Math.hypot(player.vx, player.vy) > 12)) {
         motionTrailRef.current.push({
           x: player.x - player.vx * 0.02,
@@ -656,24 +721,43 @@ export default function Game() {
         })
         trimArray(motionTrailRef.current, 80)
       }
-      motionTrailRef.current = motionTrailRef.current.filter((trail) => {
+      const motionTrails = motionTrailRef.current
+      let motionWriteIndex = 0
+      for (let i = 0; i < motionTrails.length; i += 1) {
+        const trail = motionTrails[i]
         trail.ttl -= delta
-        return trail.ttl > 0
-      })
+        if (trail.ttl > 0) {
+          motionTrails[motionWriteIndex++] = trail
+        }
+      }
+      motionTrails.length = motionWriteIndex
 
       const targetLevel = Math.floor(timeRef.current / levelConfig.waveDurationSec) + 1
       if (targetLevel !== levelRef.current) {
         levelRef.current = targetLevel
         setLevel(targetLevel)
+        audioManager.play('levelUp')
         const levelReward = itemPool[Math.floor(Math.random() * itemPool.length)]
         if (levelReward) {
+          const dropX = clamp(player.x + rand(-120, 120), 40, canvasSize.width - 40)
+          const dropY = clamp(player.y + rand(-120, 120), 40, canvasSize.height - 40)
           pickupsRef.current.push({
             id: `level-drop-${Math.random().toString(36).slice(2, 7)}`,
             itemId: levelReward.id,
-            x: clamp(player.x + rand(-120, 120), 40, canvasSize.width - 40),
-            y: clamp(player.y + rand(-120, 120), 40, canvasSize.height - 40),
+            x: dropX,
+            y: dropY,
             vy: rand(20, 60),
             radius: 12
+          })
+          // 添加光柱特效 (M1c)
+          lightPillarsRef.current.push({
+            x: dropX,
+            y: dropY,
+            life: 1.5,
+            maxLife: 1.5,
+            color: '#ffd166',
+            width: 24,
+            height: canvasSize.height
           })
         }
       }
@@ -682,13 +766,25 @@ export default function Game() {
         guaranteedDropRef.current = timeRef.current
         const guaranteedItem = itemPool[Math.floor(Math.random() * itemPool.length)]
         if (guaranteedItem) {
+          const dropX = clamp(player.x + rand(-140, 140), 40, canvasSize.width - 40)
+          const dropY = clamp(player.y + rand(-140, 140), 40, canvasSize.height - 40)
           pickupsRef.current.push({
             id: `timed-drop-${Math.random().toString(36).slice(2, 7)}`,
             itemId: guaranteedItem.id,
-            x: clamp(player.x + rand(-140, 140), 40, canvasSize.width - 40),
-            y: clamp(player.y + rand(-140, 140), 40, canvasSize.height - 40),
+            x: dropX,
+            y: dropY,
             vy: rand(20, 60),
             radius: 12
+          })
+          // 添加光柱特效 (M1c)
+          lightPillarsRef.current.push({
+            x: dropX,
+            y: dropY,
+            life: 1.2,
+            maxLife: 1.2,
+            color: '#7dff8b',
+            width: 20,
+            height: canvasSize.height
           })
         }
       }
@@ -813,6 +909,7 @@ export default function Game() {
           shootPlayer('rapid', damageValue, radiusValue, speedValue, 0, 1.2)
           spawnCloneShot('rapid', damageValue, radiusValue, speedValue, 0, 1.2, 0.9)
           spawnMuzzleFlash(14, stats.shotColor)
+          audioManager.play('shoot')
           leftHasFiredRef.current = true
           fireTimerRef.current = autoFireRate
         }
@@ -826,6 +923,7 @@ export default function Game() {
         shootPlayer('normal', damageValue, radiusValue, speedValue, 0, 0.9)
         spawnCloneShot('normal', damageValue, radiusValue, speedValue, 0, 0.9, 1)
         spawnMuzzleFlash(16, stats.shotColor)
+        audioManager.play('shoot')
         leftTapPendingRef.current = false
         fireTimerRef.current = stats.fireRate
       }
@@ -892,6 +990,7 @@ export default function Game() {
           isBoss: true,
           phase: 1
         })
+        audioManager.play('bossSpawn')
       }
 
       spawnTimerRef.current -= delta
@@ -904,7 +1003,10 @@ export default function Game() {
         if (bossActive && enemiesRef.current.length > 10) {
           return
         }
-        const enemyDef = enemyPool[Math.floor(Math.random() * enemyPool.length)]
+        const weightedEnemies = buildEnemyWeights(currentLevel)
+        const pickedId = weightedPick(weightedEnemies)
+        const enemyDef =
+          enemyMap.get(pickedId) ?? enemyPool[Math.floor(Math.random() * enemyPool.length)]
         const spawnEdge = Math.floor(Math.random() * 4)
         let x = 0
         let y = 0
@@ -1226,14 +1328,18 @@ export default function Game() {
         }
       })
 
-      const spawnedBullets: Bullet[] = []
-      bulletsRef.current = bulletsRef.current.filter((bullet) => {
+      const bullets = bulletsRef.current
+      const spawnedBullets = spawnedBulletsRef.current
+      spawnedBullets.length = 0
+      let bulletWriteIndex = 0
+      for (let i = 0; i < bullets.length; i += 1) {
+        const bullet = bullets[i]
         bullet.x += bullet.vx * delta
         bullet.y += bullet.vy * delta
         if (bullet.explodeAt && nowSec >= bullet.explodeAt) {
           const fragments = bullet.fragments ?? 4
-          for (let i = 0; i < fragments; i += 1) {
-            const theta = (Math.PI * 2 * i) / fragments + rand(-0.1, 0.1)
+          for (let j = 0; j < fragments; j += 1) {
+            const theta = (Math.PI * 2 * j) / fragments + rand(-0.1, 0.1)
             spawnedBullets.push({
               x: bullet.x,
               y: bullet.y,
@@ -1245,18 +1351,21 @@ export default function Game() {
               kind: 'shrapnel'
             })
           }
-          return false
+          continue
         }
         const inBounds =
           bullet.x > -40 &&
           bullet.x < canvasSize.width + 40 &&
           bullet.y > -40 &&
           bullet.y < canvasSize.height + 40
-        return inBounds
-      })
+        if (inBounds) {
+          bullets[bulletWriteIndex++] = bullet
+        }
+      }
+      bullets.length = bulletWriteIndex
       if (spawnedBullets.length > 0) {
-        bulletsRef.current.push(...spawnedBullets)
-        trimArray(bulletsRef.current, MAX_BULLETS)
+        bullets.push(...spawnedBullets)
+        trimArray(bullets, MAX_BULLETS)
       }
 
       bulletsRef.current.forEach((bullet) => {
@@ -1306,15 +1415,24 @@ export default function Game() {
               player.shield = 0
             }
             player.invulnUntil = nowSec + 0.5
+            audioManager.play('damage')
             if (player.hp <= 0) endGame()
             bullet.x = -9999
           }
         }
       })
 
-      enemiesRef.current = enemiesRef.current.filter((enemy) => enemy.hp > 0)
+      const enemies = enemiesRef.current
+      let enemyWriteIndex = 0
+      for (let i = 0; i < enemies.length; i += 1) {
+        const enemy = enemies[i]
+        if (enemy.hp > 0) {
+          enemies[enemyWriteIndex++] = enemy
+        }
+      }
+      enemies.length = enemyWriteIndex
 
-      enemiesRef.current.forEach((enemy) => {
+      enemies.forEach((enemy) => {
         if (distance(enemy, player) < enemy.size + PLAYER_RADIUS && nowSec > player.invulnUntil) {
           const def = enemyMap.get(enemy.defId)
           const baseDamage = def?.baseDamage ?? 10
@@ -1326,24 +1444,37 @@ export default function Game() {
             player.shield = 0
           }
           player.invulnUntil = nowSec + 0.5
+          audioManager.play('damage')
           if (player.hp <= 0) endGame()
         }
       })
 
-      const deadEnemies: EnemyEntity[] = []
-      enemiesRef.current = enemiesRef.current.filter((enemy) => {
+      const deadEnemies = deadEnemiesRef.current
+      deadEnemies.length = 0
+      let aliveWriteIndex = 0
+      for (let i = 0; i < enemies.length; i += 1) {
+        const enemy = enemies[i]
         if (enemy.hp <= 0) {
           deadEnemies.push(enemy)
-          return false
+        } else {
+          enemies[aliveWriteIndex++] = enemy
         }
-        return true
-      })
+      }
+      enemies.length = aliveWriteIndex
 
       deadEnemies.forEach((enemy) => {
         addKill()
         addScore(80 + currentLevel * 10)
         comboRef.current = comboTimerRef.current > 0 ? comboRef.current + 1 : 1
         comboTimerRef.current = 2.4
+        
+        // 音效 (M3)
+        if (comboRef.current >= 3) {
+          audioManager.play('killCombo')
+        } else {
+          audioManager.play('kill')
+        }
+        
         if (comboRef.current >= 2) {
           spawnFloatText(enemy.x, enemy.y - 12, `COMBO x${comboRef.current}`, '#ffd166')
         }
@@ -1367,7 +1498,7 @@ export default function Game() {
             { id: 'buff', weight: dropConfig.itemWeights.buff }
           ]
           const poolType = weightedPick(weights)
-          const candidates = itemPool.filter((item) => item.type === poolType)
+          const candidates = itemPoolByType[poolType as 'permanent' | 'buff'] ?? itemPool
           const item = candidates[Math.floor(Math.random() * candidates.length)]
           if (item) {
             pickupsRef.current.push({
@@ -1377,6 +1508,16 @@ export default function Game() {
               y: enemy.y,
               vy: rand(20, 60),
               radius: 12
+            })
+            // 添加光柱特效 (M1c)
+            lightPillarsRef.current.push({
+              x: enemy.x,
+              y: enemy.y,
+              life: 1.0,
+              maxLife: 1.0,
+              color: enemy.family === 'old-testament' ? '#f6b36f' : '#6cf6ff',
+              width: 16,
+              height: canvasSize.height
             })
           }
         }
@@ -1389,7 +1530,10 @@ export default function Game() {
         setBossPhase(bossPhase)
       }
 
-      echoShotsRef.current = echoShotsRef.current.filter((shot) => {
+      const echoShots = echoShotsRef.current
+      let echoWriteIndex = 0
+      for (let i = 0; i < echoShots.length; i += 1) {
+        const shot = echoShots[i]
         if (shot.fireAt <= nowSec) {
           const angle = Math.atan2(mouseRef.current.y - shot.origin.y, mouseRef.current.x - shot.origin.x)
           bulletsRef.current.push({
@@ -1402,12 +1546,16 @@ export default function Game() {
             from: 'player',
             kind: 'echo'
           })
-          return false
+        } else {
+          echoShots[echoWriteIndex++] = shot
         }
-        return true
-      })
+      }
+      echoShots.length = echoWriteIndex
 
-      pickupsRef.current = pickupsRef.current.filter((pickup) => {
+      const pickups = pickupsRef.current
+      let pickupWriteIndex = 0
+      for (let i = 0; i < pickups.length; i += 1) {
+        const pickup = pickups[i]
         pickup.y += pickup.vy * delta
         if (distance(pickup, player) < pickup.radius + PLAYER_RADIUS) {
           const item = getItemById(pickup.itemId)
@@ -1421,11 +1569,15 @@ export default function Game() {
             })
             spawnBurst(player.x, player.y, '#ffd166', 10, 120)
             spawnRing(player.x, player.y, '#ffd166', PLAYER_RADIUS + 10)
+            audioManager.play('pickup')
           }
-          return false
+          continue
         }
-        return pickup.y < canvasSize.height + 40
-      })
+        if (pickup.y < canvasSize.height + 40) {
+          pickups[pickupWriteIndex++] = pickup
+        }
+      }
+      pickups.length = pickupWriteIndex
 
       const particles = particlesRef.current
       let writeIndex = 0
@@ -1439,6 +1591,18 @@ export default function Game() {
         }
       }
       particles.length = writeIndex
+
+      // 更新光柱特效 (M1c)
+      const lightPillars = lightPillarsRef.current
+      writeIndex = 0
+      for (let i = 0; i < lightPillars.length; i += 1) {
+        const pillar = lightPillars[i]
+        pillar.life -= delta
+        if (pillar.life > 0) {
+          lightPillars[writeIndex++] = pillar
+        }
+      }
+      lightPillars.length = writeIndex
 
       const rings = ringsRef.current
       writeIndex = 0
@@ -1538,26 +1702,56 @@ export default function Game() {
       ctx.globalCompositeOperation = 'screen'
       ctx.translate(canvasSize.width * 0.5, canvasSize.height * 0.45)
       ctx.rotate(starField.bandAngle)
-      const bandWidth = canvasSize.width * 1.5
-      const bandHeight = canvasSize.height * 0.26
-      const bandGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
-      bandGradient.addColorStop(0, 'rgba(40,110,170,0)')
-      bandGradient.addColorStop(0.4, 'rgba(80,160,205,0.06)')
-      bandGradient.addColorStop(0.5, 'rgba(120,200,230,0.12)')
-      bandGradient.addColorStop(0.6, 'rgba(80,160,205,0.06)')
-      bandGradient.addColorStop(1, 'rgba(40,110,170,0)')
-      ctx.fillStyle = bandGradient
-      ctx.fillRect(-bandWidth / 2, -bandHeight / 2, bandWidth, bandHeight)
+      const gradientCache = gradientCacheRef.current
+      if (
+        gradientCache.width !== canvasSize.width ||
+        gradientCache.height !== canvasSize.height ||
+        !gradientCache.bandGradient ||
+        !gradientCache.coreGradient
+      ) {
+        const bandWidth = canvasSize.width * 1.5
+        const bandHeight = canvasSize.height * 0.26
+        const bandGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
+        bandGradient.addColorStop(0, 'rgba(40,110,170,0)')
+        bandGradient.addColorStop(0.4, 'rgba(80,160,205,0.06)')
+        bandGradient.addColorStop(0.5, 'rgba(120,200,230,0.12)')
+        bandGradient.addColorStop(0.6, 'rgba(80,160,205,0.06)')
+        bandGradient.addColorStop(1, 'rgba(40,110,170,0)')
 
-      const coreHeight = bandHeight * 0.35
-      const coreGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
-      coreGradient.addColorStop(0, 'rgba(60,140,190,0)')
-      coreGradient.addColorStop(0.45, 'rgba(110,190,220,0.08)')
-      coreGradient.addColorStop(0.5, 'rgba(140,215,235,0.14)')
-      coreGradient.addColorStop(0.55, 'rgba(110,190,220,0.08)')
-      coreGradient.addColorStop(1, 'rgba(60,140,190,0)')
-      ctx.fillStyle = coreGradient
-      ctx.fillRect(-bandWidth / 2, -coreHeight / 2, bandWidth, coreHeight)
+        const coreHeight = bandHeight * 0.35
+        const coreGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
+        coreGradient.addColorStop(0, 'rgba(60,140,190,0)')
+        coreGradient.addColorStop(0.45, 'rgba(110,190,220,0.08)')
+        coreGradient.addColorStop(0.5, 'rgba(140,215,235,0.14)')
+        coreGradient.addColorStop(0.55, 'rgba(110,190,220,0.08)')
+        coreGradient.addColorStop(1, 'rgba(60,140,190,0)')
+
+        gradientCache.width = canvasSize.width
+        gradientCache.height = canvasSize.height
+        gradientCache.bandWidth = bandWidth
+        gradientCache.bandHeight = bandHeight
+        gradientCache.coreHeight = coreHeight
+        gradientCache.bandGradient = bandGradient
+        gradientCache.coreGradient = coreGradient
+      }
+
+      if (gradientCache.bandGradient && gradientCache.coreGradient) {
+        ctx.fillStyle = gradientCache.bandGradient
+        ctx.fillRect(
+          -gradientCache.bandWidth / 2,
+          -gradientCache.bandHeight / 2,
+          gradientCache.bandWidth,
+          gradientCache.bandHeight
+        )
+
+        ctx.fillStyle = gradientCache.coreGradient
+        ctx.fillRect(
+          -gradientCache.bandWidth / 2,
+          -gradientCache.coreHeight / 2,
+          gradientCache.bandWidth,
+          gradientCache.coreHeight
+        )
+      }
 
       const dustDrift = Math.sin(time * 0.05) * 12
       starField.dust.forEach((dust) => {
@@ -1970,6 +2164,41 @@ export default function Game() {
             3
           )
         }
+      })
+
+      // 渲染光柱特效 (M1c)
+      lightPillarsRef.current.forEach((pillar) => {
+        const progress = pillar.life / pillar.maxLife
+        const alpha = progress * 0.6
+        ctx.save()
+        ctx.globalCompositeOperation = 'screen'
+        
+        // 主光柱
+        const gradient = ctx.createLinearGradient(pillar.x, 0, pillar.x, pillar.y)
+        gradient.addColorStop(0, `${pillar.color}00`)
+        gradient.addColorStop(0.3, pillar.color + Math.floor(alpha * 80).toString(16).padStart(2, '0'))
+        gradient.addColorStop(0.7, pillar.color + Math.floor(alpha * 120).toString(16).padStart(2, '0'))
+        gradient.addColorStop(1, `${pillar.color}00`)
+        
+        ctx.fillStyle = gradient
+        ctx.fillRect(pillar.x - pillar.width / 2, 0, pillar.width, pillar.y)
+        
+        // 外发光
+        const glowGradient = ctx.createLinearGradient(pillar.x, 0, pillar.x, pillar.y)
+        glowGradient.addColorStop(0, `${pillar.color}00`)
+        glowGradient.addColorStop(0.5, pillar.color + Math.floor(alpha * 40).toString(16).padStart(2, '0'))
+        glowGradient.addColorStop(1, `${pillar.color}00`)
+        
+        ctx.fillStyle = glowGradient
+        ctx.fillRect(pillar.x - pillar.width, 0, pillar.width * 2, pillar.y)
+        
+        // 底部光晕
+        ctx.beginPath()
+        ctx.arc(pillar.x, pillar.y, pillar.width * 1.5 * progress, 0, Math.PI * 2)
+        ctx.fillStyle = pillar.color + Math.floor(alpha * 60).toString(16).padStart(2, '0')
+        ctx.fill()
+        
+        ctx.restore()
       })
 
       pickupsRef.current.forEach((pickup) => {

@@ -12,7 +12,7 @@ export async function GET() {
       LIMIT 50
     `
     return NextResponse.json({ leaderboard: rows })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ leaderboard: [] }, { status: 200 })
   }
 }
