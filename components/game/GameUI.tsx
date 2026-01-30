@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import DebugPanel from '@/components/game/DebugPanel'
 import { useGameStore } from '@/stores/gameStore'
 import { levelConfig } from '@/lib/game-data'
 
@@ -25,6 +26,7 @@ const textMap = {
     leaderboard: '排行榜',
     name: '代号',
     lang: '语言',
+    debug: 'Debug',
     liveware: 'LiveWare',
     progress: '进度',
     boss: 'BOSS',
@@ -47,6 +49,7 @@ const textMap = {
     leaderboard: 'Leaderboard',
     name: 'Callsign',
     lang: 'Lang',
+    debug: 'Debug',
     liveware: 'LiveWare',
     progress: 'Progress',
     boss: 'BOSS',
@@ -54,8 +57,24 @@ const textMap = {
   }
 }
 
+type LeaderboardEntry = {
+  player_name: string
+  score: number
+}
+
+const normalizeLeaderboard = (payload: unknown): LeaderboardEntry[] => {
+  if (!Array.isArray(payload)) return []
+  return payload
+    .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
+    .map((entry) => ({
+      player_name: typeof entry['player_name'] === 'string' ? entry['player_name'] : '---',
+      score: typeof entry['score'] === 'number' ? entry['score'] : 0
+    }))
+}
+
 export default function GameUI() {
-  const [leaderboard, setLeaderboard] = useState<Array<Record<string, unknown>>>([])
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [showDebug, setShowDebug] = useState(false)
   const {
     phase,
     level,
@@ -91,7 +110,7 @@ export default function GameUI() {
   useEffect(() => {
     fetch('/api/leaderboard')
       .then((res) => res.json())
-      .then((data) => setLeaderboard(data.leaderboard ?? []))
+      .then((data) => setLeaderboard(normalizeLeaderboard(data.leaderboard)))
       .catch(() => setLeaderboard([]))
   }, [phase])
 
@@ -116,6 +135,12 @@ export default function GameUI() {
             className="text-xs text-cyan-200 uppercase"
           >
             {language === 'zh' ? '中文' : 'EN'}
+          </button>
+          <button
+            onClick={() => setShowDebug((prev) => !prev)}
+            className={`text-xs ${showDebug ? 'text-amber-200' : 'text-gray-200'}`}
+          >
+            {text.debug}
           </button>
           <button
             onClick={phase === 'paused' ? resumeGame : pauseGame}
@@ -223,9 +248,9 @@ export default function GameUI() {
                 <div className="p-3 text-xs text-gray-500">--</div>
               )}
               {leaderboard.slice(0, 6).map((entry, index) => (
-                <div key={`${entry['player_name']}-${index}`} className="flex justify-between px-3 py-2 text-xs">
-                  <span>{entry['player_name']}</span>
-                  <span className="text-cyan-300">{entry['score']}</span>
+                <div key={`${entry.player_name}-${index}`} className="flex justify-between px-3 py-2 text-xs">
+                  <span>{entry.player_name}</span>
+                  <span className="text-cyan-300">{entry.score}</span>
                 </div>
               ))}
             </div>
@@ -238,6 +263,8 @@ export default function GameUI() {
           </div>
         </div>
       )}
+
+      <DebugPanel open={showDebug} onClose={() => setShowDebug(false)} />
     </>
   )
 }
