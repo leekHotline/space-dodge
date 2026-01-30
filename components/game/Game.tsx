@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGameStore } from '@/stores/gameStore'
 import { dropConfig, enemies as enemyPool, items as itemPool, levelConfig } from '@/lib/game-data'
+import { audioManager } from '@/lib/audio'
 
 type Vector2 = { x: number; y: number }
 
@@ -56,6 +57,17 @@ interface Pickup {
   y: number
   vy: number
   radius: number
+}
+
+// 光柱特效 (M1c)
+interface LightPillar {
+  x: number
+  y: number
+  life: number
+  maxLife: number
+  color: string
+  width: number
+  height: number
 }
 
 interface EchoShot {
@@ -254,7 +266,8 @@ const buildStarField = (width: number, height: number): StarField => {
   }
 }
 
-const computeStats = (activeItemIds: string[], timeSec: number) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const computeStats = (activeItemIds: string[], _timeSec: number) => {
   const activeItems = activeItemIds.map(getItemById).filter(Boolean)
   let fireRate = levelConfig.baseFireRate
   let moveSpeed = levelConfig.baseMoveSpeed
@@ -302,11 +315,24 @@ const computeStats = (activeItemIds: string[], timeSec: number) => {
     if (item.stats.trailPct) trailStrength += item.stats.trailPct
   })
 
+  // 基于 tags 的组合效果
   if (tags.has('energy') && tags.has('crit')) {
     critChance += 5
   }
   if (tags.has('clone') && tags.has('echo')) {
     cloneChance += 5
+  }
+
+  // 道具组合效果 (M2)
+  const itemIds = activeItems.map(i => i?.id).filter(Boolean)
+  // I01(星能电容) + I07(蔚蓝核心) = 额外 +5% 暴击率
+  if (itemIds.includes('I01') && itemIds.includes('I07')) {
+    critChance += 5
+  }
+  // I04(量子镜像) + I08(回声线圈) = 回声弹 50% 概率复制
+  let echoCloneChance = 0
+  if (itemIds.includes('I04') && itemIds.includes('I08')) {
+    echoCloneChance = 50
   }
 
   let shipAccent = colors.accent
@@ -343,7 +369,8 @@ const computeStats = (activeItemIds: string[], timeSec: number) => {
     trailStrength,
     dodgeWindowMs,
     shipAccent,
-    shotColor
+    shotColor,
+    echoCloneChance
   }
 }
 
@@ -356,7 +383,6 @@ export default function Game() {
     phase,
     level,
     score,
-    highScore,
     kills,
     timeSec,
     language,
@@ -391,6 +417,7 @@ export default function Game() {
   const deadEnemiesRef = useRef<EnemyEntity[]>([])
   const pickupsRef = useRef<Pickup[]>([])
   const echoShotsRef = useRef<EchoShot[]>([])
+  const lightPillarsRef = useRef<LightPillar[]>([])
   const keysRef = useRef(new Set<string>())
   const mouseRef = useRef<Vector2>({ x: 480, y: 0 })
   const leftDownRef = useRef(false)
@@ -581,6 +608,7 @@ export default function Game() {
         expiresAt
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, canvasSize])
 
   useEffect(() => {
@@ -667,6 +695,7 @@ export default function Game() {
           dodgeCooldownRef.current = nowSec + DODGE_COOLDOWN_SEC
           staminaRef.current = Math.max(0, staminaRef.current - DODGE_COST)
           player.invulnUntil = Math.max(player.invulnUntil, nowSec + dodgeDuration)
+          audioManager.play('dodge')
         }
       }
 
@@ -707,15 +736,28 @@ export default function Game() {
       if (targetLevel !== levelRef.current) {
         levelRef.current = targetLevel
         setLevel(targetLevel)
+        audioManager.play('levelUp')
         const levelReward = itemPool[Math.floor(Math.random() * itemPool.length)]
         if (levelReward) {
+          const dropX = clamp(player.x + rand(-120, 120), 40, canvasSize.width - 40)
+          const dropY = clamp(player.y + rand(-120, 120), 40, canvasSize.height - 40)
           pickupsRef.current.push({
             id: `level-drop-${Math.random().toString(36).slice(2, 7)}`,
             itemId: levelReward.id,
-            x: clamp(player.x + rand(-120, 120), 40, canvasSize.width - 40),
-            y: clamp(player.y + rand(-120, 120), 40, canvasSize.height - 40),
+            x: dropX,
+            y: dropY,
             vy: rand(20, 60),
             radius: 12
+          })
+          // 添加光柱特效 (M1c)
+          lightPillarsRef.current.push({
+            x: dropX,
+            y: dropY,
+            life: 1.5,
+            maxLife: 1.5,
+            color: '#ffd166',
+            width: 24,
+            height: canvasSize.height
           })
         }
       }
@@ -724,13 +766,25 @@ export default function Game() {
         guaranteedDropRef.current = timeRef.current
         const guaranteedItem = itemPool[Math.floor(Math.random() * itemPool.length)]
         if (guaranteedItem) {
+          const dropX = clamp(player.x + rand(-140, 140), 40, canvasSize.width - 40)
+          const dropY = clamp(player.y + rand(-140, 140), 40, canvasSize.height - 40)
           pickupsRef.current.push({
             id: `timed-drop-${Math.random().toString(36).slice(2, 7)}`,
             itemId: guaranteedItem.id,
-            x: clamp(player.x + rand(-140, 140), 40, canvasSize.width - 40),
-            y: clamp(player.y + rand(-140, 140), 40, canvasSize.height - 40),
+            x: dropX,
+            y: dropY,
             vy: rand(20, 60),
             radius: 12
+          })
+          // 添加光柱特效 (M1c)
+          lightPillarsRef.current.push({
+            x: dropX,
+            y: dropY,
+            life: 1.2,
+            maxLife: 1.2,
+            color: '#7dff8b',
+            width: 20,
+            height: canvasSize.height
           })
         }
       }
@@ -855,6 +909,7 @@ export default function Game() {
           shootPlayer('rapid', damageValue, radiusValue, speedValue, 0, 1.2)
           spawnCloneShot('rapid', damageValue, radiusValue, speedValue, 0, 1.2, 0.9)
           spawnMuzzleFlash(14, stats.shotColor)
+          audioManager.play('shoot')
           leftHasFiredRef.current = true
           fireTimerRef.current = autoFireRate
         }
@@ -868,6 +923,7 @@ export default function Game() {
         shootPlayer('normal', damageValue, radiusValue, speedValue, 0, 0.9)
         spawnCloneShot('normal', damageValue, radiusValue, speedValue, 0, 0.9, 1)
         spawnMuzzleFlash(16, stats.shotColor)
+        audioManager.play('shoot')
         leftTapPendingRef.current = false
         fireTimerRef.current = stats.fireRate
       }
@@ -934,6 +990,7 @@ export default function Game() {
           isBoss: true,
           phase: 1
         })
+        audioManager.play('bossSpawn')
       }
 
       spawnTimerRef.current -= delta
@@ -1358,6 +1415,7 @@ export default function Game() {
               player.shield = 0
             }
             player.invulnUntil = nowSec + 0.5
+            audioManager.play('damage')
             if (player.hp <= 0) endGame()
             bullet.x = -9999
           }
@@ -1386,6 +1444,7 @@ export default function Game() {
             player.shield = 0
           }
           player.invulnUntil = nowSec + 0.5
+          audioManager.play('damage')
           if (player.hp <= 0) endGame()
         }
       })
@@ -1408,6 +1467,14 @@ export default function Game() {
         addScore(80 + currentLevel * 10)
         comboRef.current = comboTimerRef.current > 0 ? comboRef.current + 1 : 1
         comboTimerRef.current = 2.4
+        
+        // 音效 (M3)
+        if (comboRef.current >= 3) {
+          audioManager.play('killCombo')
+        } else {
+          audioManager.play('kill')
+        }
+        
         if (comboRef.current >= 2) {
           spawnFloatText(enemy.x, enemy.y - 12, `COMBO x${comboRef.current}`, '#ffd166')
         }
@@ -1441,6 +1508,16 @@ export default function Game() {
               y: enemy.y,
               vy: rand(20, 60),
               radius: 12
+            })
+            // 添加光柱特效 (M1c)
+            lightPillarsRef.current.push({
+              x: enemy.x,
+              y: enemy.y,
+              life: 1.0,
+              maxLife: 1.0,
+              color: enemy.family === 'old-testament' ? '#f6b36f' : '#6cf6ff',
+              width: 16,
+              height: canvasSize.height
             })
           }
         }
@@ -1492,6 +1569,7 @@ export default function Game() {
             })
             spawnBurst(player.x, player.y, '#ffd166', 10, 120)
             spawnRing(player.x, player.y, '#ffd166', PLAYER_RADIUS + 10)
+            audioManager.play('pickup')
           }
           continue
         }
@@ -1513,6 +1591,18 @@ export default function Game() {
         }
       }
       particles.length = writeIndex
+
+      // 更新光柱特效 (M1c)
+      const lightPillars = lightPillarsRef.current
+      writeIndex = 0
+      for (let i = 0; i < lightPillars.length; i += 1) {
+        const pillar = lightPillars[i]
+        pillar.life -= delta
+        if (pillar.life > 0) {
+          lightPillars[writeIndex++] = pillar
+        }
+      }
+      lightPillars.length = writeIndex
 
       const rings = ringsRef.current
       writeIndex = 0
@@ -2074,6 +2164,41 @@ export default function Game() {
             3
           )
         }
+      })
+
+      // 渲染光柱特效 (M1c)
+      lightPillarsRef.current.forEach((pillar) => {
+        const progress = pillar.life / pillar.maxLife
+        const alpha = progress * 0.6
+        ctx.save()
+        ctx.globalCompositeOperation = 'screen'
+        
+        // 主光柱
+        const gradient = ctx.createLinearGradient(pillar.x, 0, pillar.x, pillar.y)
+        gradient.addColorStop(0, `${pillar.color}00`)
+        gradient.addColorStop(0.3, pillar.color + Math.floor(alpha * 80).toString(16).padStart(2, '0'))
+        gradient.addColorStop(0.7, pillar.color + Math.floor(alpha * 120).toString(16).padStart(2, '0'))
+        gradient.addColorStop(1, `${pillar.color}00`)
+        
+        ctx.fillStyle = gradient
+        ctx.fillRect(pillar.x - pillar.width / 2, 0, pillar.width, pillar.y)
+        
+        // 外发光
+        const glowGradient = ctx.createLinearGradient(pillar.x, 0, pillar.x, pillar.y)
+        glowGradient.addColorStop(0, `${pillar.color}00`)
+        glowGradient.addColorStop(0.5, pillar.color + Math.floor(alpha * 40).toString(16).padStart(2, '0'))
+        glowGradient.addColorStop(1, `${pillar.color}00`)
+        
+        ctx.fillStyle = glowGradient
+        ctx.fillRect(pillar.x - pillar.width, 0, pillar.width * 2, pillar.y)
+        
+        // 底部光晕
+        ctx.beginPath()
+        ctx.arc(pillar.x, pillar.y, pillar.width * 1.5 * progress, 0, Math.PI * 2)
+        ctx.fillStyle = pillar.color + Math.floor(alpha * 60).toString(16).padStart(2, '0')
+        ctx.fill()
+        
+        ctx.restore()
       })
 
       pickupsRef.current.forEach((pickup) => {

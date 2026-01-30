@@ -1,0 +1,25 @@
+You are an autonomous coding agent.
+
+Follow AGENTS.md strictly.
+Read docs/SPACE_DODGE_REFACTOR.md.
+
+Start with the FIRST unchecked milestone.
+Keep working until the LAST milestone is completed.
+
+Do NOT ask questions.
+Do NOT stop unless all milestones are completed.
+
+For each milestone:
+1. Modify code to satisfy the milestone requirements.
+2. Run pnpm -s lint
+3. Run pnpm -s typecheck
+4. Run pnpm -s build
+5. Run pnpm -s test
+6. If any command fails, fix the code and rerun from step 2 until all pass.
+7. git commit with message: "milestone: <milestone id>"
+8. Mark the checkbox [x] for that milestone in docs/SPACE_DODGE_REFACTOR.md
+9. Continue automatically to the next milestone.
+
+Never explain what you are doing.
+Never ask the user for confirmation.
+Only act.
