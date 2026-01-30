@@ -1,4 +1,8 @@
-## How to start? 第一句话
+<img width="1566" height="1020" alt="image" src="https://github.com/user-attachments/assets/e32ef222-0d8a-4662-8853-898a120ba242" />
+<img width="1566" height="1020" alt="image" src="https://github.com/user-attachments/assets/bfc5fe37-b432-409b-b1a9-108066f16003" />
+
+
+## How to start?
 请先阅读项目根目录下的AGENT.md、ACCEPTANCE.md、COMMANDS.md / 严格遵守其中规则。/本任务先进入 Design Gate，只输出设计方案和测试计划，不要写代码。
 
 ```mermaid
