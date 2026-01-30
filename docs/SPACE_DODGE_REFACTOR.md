@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS runs (
 ## 9.1 Milestone Checklist (for Codex Runner)
 - [x] M0: 建立测试闸门与CI级验证命令：确保 pnpm lint / pnpm typecheck / pnpm build 可运行；若 pnpm test 未接入则补一条最小 vitest 用例(1个)让 pnpm test 有效
 - [x] M1a: 数据与API（静态版）：实现 /api/items /api/enemies /api/config 三个 GET 端点，返回 12 道具与 8 敌人数据（与文档一致），并在前端能拉取并渲染为调试面板
-- [ ] M1b: 核心玩法骨架：实现关卡推进（每关2-3分钟配置）、敌人刷新权重、击杀/掉落的基础循环；先用占位SVG素材也可，但结构要可替换
+- [x] M1b: 核心玩法骨架：实现关卡推进（每关2-3分钟配置）、敌人刷新权重、击杀/掉落的基础循环；先用占位SVG素材也可，但结构要可替换
 - [ ] M1c: 掉落与选择：实现道具掉落光柱/拾取反馈；关卡结束给出2-3条路线选择（不同关卡配置），路线可汇合
 - [ ] M1d: Run 记录：实现 POST /api/run 与 Neon PostgreSQL runs 表接入（migration/初始化说明），能在结束时提交 run（分数/关卡/击杀/时长/seed/items）
 - [ ] M1e: Leaderboard：实现 GET /api/leaderboard Top50（按score降序），前端排行榜页面展示

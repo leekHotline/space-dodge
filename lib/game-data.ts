@@ -109,7 +109,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 40,
     baseSpeed: 2.2,
     baseDamage: 10,
-    behavior: 'charge'
+    behavior: 'charge',
+    weight: 1.2
   },
   {
     id: 'E02',
@@ -119,7 +120,8 @@ export const enemies: EnemyDefinition[] = [
     baseSpeed: 2.6,
     baseDamage: 6,
     behavior: 'swarm',
-    size: 14
+    size: 14,
+    weight: 1.4
   },
   {
     id: 'E03',
@@ -128,7 +130,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 70,
     baseSpeed: 1.8,
     baseDamage: 14,
-    behavior: 'dash'
+    behavior: 'dash',
+    weight: 1
   },
   {
     id: 'E04',
@@ -137,7 +140,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 55,
     baseSpeed: 1.2,
     baseDamage: 8,
-    behavior: 'summon'
+    behavior: 'summon',
+    weight: 0.9
   },
   {
     id: 'E05',
@@ -146,7 +150,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 120,
     baseSpeed: 1.0,
     baseDamage: 16,
-    behavior: 'bruiser'
+    behavior: 'bruiser',
+    weight: 0.7
   },
   {
     id: 'E06',
@@ -155,7 +160,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 45,
     baseSpeed: 1.4,
     baseDamage: 12,
-    behavior: 'shooter'
+    behavior: 'shooter',
+    weight: 1
   },
   {
     id: 'E07',
@@ -164,7 +170,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 50,
     baseSpeed: 2.0,
     baseDamage: 11,
-    behavior: 'blink'
+    behavior: 'blink',
+    weight: 0.8
   },
   {
     id: 'E08',
@@ -173,7 +180,8 @@ export const enemies: EnemyDefinition[] = [
     baseHp: 65,
     baseSpeed: 1.1,
     baseDamage: 9,
-    behavior: 'buffer'
+    behavior: 'buffer',
+    weight: 0.6
   }
 ]
 

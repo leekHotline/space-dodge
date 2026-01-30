@@ -177,7 +177,12 @@ const trimArray = <T,>(items: T[], max: number) => {
   if (items.length > max) items.splice(0, items.length - max)
 }
 
-const getItemById = (id: string) => itemPool.find((item) => item.id === id)
+const itemMap = new Map(itemPool.map((item) => [item.id, item]))
+const itemPoolByType = {
+  permanent: itemPool.filter((item) => item.type === 'permanent'),
+  buff: itemPool.filter((item) => item.type === 'buff')
+}
+const getItemById = (id: string) => itemMap.get(id)
 const enemyMap = new Map(enemyPool.map((enemy) => [enemy.id, enemy]))
 
 const bossDef = {
@@ -199,6 +204,20 @@ const weightedPick = (entries: Array<{ id: string; weight: number }>) => {
     if (roll <= acc) return entry.id
   }
   return entries[0]?.id ?? ''
+}
+
+const buildEnemyWeights = (level: number) => {
+  const familyWeights: Record<string, number> = levelConfig.enemyWeights ?? {}
+  const levelBias = Math.min(0.6, Math.max(0, (level - 1) * 0.05))
+  return enemyPool.map((enemy) => {
+    const baseWeight = enemy.weight ?? 1
+    const familyWeight = familyWeights[enemy.family] ?? 1
+    const bias = enemy.family === 'old-testament' ? 1 + levelBias : 1
+    return {
+      id: enemy.id,
+      weight: baseWeight * familyWeight * bias
+    }
+  })
 }
 
 const buildStarField = (width: number, height: number): StarField => {
@@ -367,7 +386,9 @@ export default function Game() {
   })
 
   const bulletsRef = useRef<Bullet[]>([])
+  const spawnedBulletsRef = useRef<Bullet[]>([])
   const enemiesRef = useRef<EnemyEntity[]>([])
+  const deadEnemiesRef = useRef<EnemyEntity[]>([])
   const pickupsRef = useRef<Pickup[]>([])
   const echoShotsRef = useRef<EchoShot[]>([])
   const keysRef = useRef(new Set<string>())
@@ -391,6 +412,15 @@ export default function Game() {
   const flashesRef = useRef<FlashFx[]>([])
   const floatTextsRef = useRef<FloatText[]>([])
   const starFieldRef = useRef<StarField>({ width: 0, height: 0, layers: [], dust: [], bandAngle: -0.35 })
+  const gradientCacheRef = useRef({
+    width: 0,
+    height: 0,
+    bandWidth: 0,
+    bandHeight: 0,
+    coreHeight: 0,
+    bandGradient: null as CanvasGradient | null,
+    coreGradient: null as CanvasGradient | null
+  })
   const shootingStarsRef = useRef<ShootingStar[]>([])
   const lastUiUpdateRef = useRef(0)
   const lastBossPhaseRef = useRef<number | null>(null)
@@ -580,7 +610,7 @@ export default function Game() {
     const update = (delta: number, nowSec: number) => {
       const player = playerRef.current
       const stats = computeStats(activeItemIds, nowSec)
-      const overloadActive = activeItemIds.includes('I11')
+      const overloadActive = stats.overheatActive
       if (!overloadActive && overloadActiveRef.current) {
         overheatUntilRef.current = timeRef.current + 3
       }
@@ -643,10 +673,16 @@ export default function Game() {
       if (isDodging) {
         trailRef.current.push({ x: player.x, y: player.y, ttl: 0.25 })
       }
-      trailRef.current = trailRef.current.filter((trail) => {
+      const trails = trailRef.current
+      let trailWriteIndex = 0
+      for (let i = 0; i < trails.length; i += 1) {
+        const trail = trails[i]
         trail.ttl -= delta
-        return trail.ttl > 0
-      })
+        if (trail.ttl > 0) {
+          trails[trailWriteIndex++] = trail
+        }
+      }
+      trails.length = trailWriteIndex
       if (!isDodging && (inputActive || Math.hypot(player.vx, player.vy) > 12)) {
         motionTrailRef.current.push({
           x: player.x - player.vx * 0.02,
@@ -656,10 +692,16 @@ export default function Game() {
         })
         trimArray(motionTrailRef.current, 80)
       }
-      motionTrailRef.current = motionTrailRef.current.filter((trail) => {
+      const motionTrails = motionTrailRef.current
+      let motionWriteIndex = 0
+      for (let i = 0; i < motionTrails.length; i += 1) {
+        const trail = motionTrails[i]
         trail.ttl -= delta
-        return trail.ttl > 0
-      })
+        if (trail.ttl > 0) {
+          motionTrails[motionWriteIndex++] = trail
+        }
+      }
+      motionTrails.length = motionWriteIndex
 
       const targetLevel = Math.floor(timeRef.current / levelConfig.waveDurationSec) + 1
       if (targetLevel !== levelRef.current) {
@@ -904,7 +946,10 @@ export default function Game() {
         if (bossActive && enemiesRef.current.length > 10) {
           return
         }
-        const enemyDef = enemyPool[Math.floor(Math.random() * enemyPool.length)]
+        const weightedEnemies = buildEnemyWeights(currentLevel)
+        const pickedId = weightedPick(weightedEnemies)
+        const enemyDef =
+          enemyMap.get(pickedId) ?? enemyPool[Math.floor(Math.random() * enemyPool.length)]
         const spawnEdge = Math.floor(Math.random() * 4)
         let x = 0
         let y = 0
@@ -1226,14 +1271,18 @@ export default function Game() {
         }
       })
 
-      const spawnedBullets: Bullet[] = []
-      bulletsRef.current = bulletsRef.current.filter((bullet) => {
+      const bullets = bulletsRef.current
+      const spawnedBullets = spawnedBulletsRef.current
+      spawnedBullets.length = 0
+      let bulletWriteIndex = 0
+      for (let i = 0; i < bullets.length; i += 1) {
+        const bullet = bullets[i]
         bullet.x += bullet.vx * delta
         bullet.y += bullet.vy * delta
         if (bullet.explodeAt && nowSec >= bullet.explodeAt) {
           const fragments = bullet.fragments ?? 4
-          for (let i = 0; i < fragments; i += 1) {
-            const theta = (Math.PI * 2 * i) / fragments + rand(-0.1, 0.1)
+          for (let j = 0; j < fragments; j += 1) {
+            const theta = (Math.PI * 2 * j) / fragments + rand(-0.1, 0.1)
             spawnedBullets.push({
               x: bullet.x,
               y: bullet.y,
@@ -1245,18 +1294,21 @@ export default function Game() {
               kind: 'shrapnel'
             })
           }
-          return false
+          continue
         }
         const inBounds =
           bullet.x > -40 &&
           bullet.x < canvasSize.width + 40 &&
           bullet.y > -40 &&
           bullet.y < canvasSize.height + 40
-        return inBounds
-      })
+        if (inBounds) {
+          bullets[bulletWriteIndex++] = bullet
+        }
+      }
+      bullets.length = bulletWriteIndex
       if (spawnedBullets.length > 0) {
-        bulletsRef.current.push(...spawnedBullets)
-        trimArray(bulletsRef.current, MAX_BULLETS)
+        bullets.push(...spawnedBullets)
+        trimArray(bullets, MAX_BULLETS)
       }
 
       bulletsRef.current.forEach((bullet) => {
@@ -1312,9 +1364,17 @@ export default function Game() {
         }
       })
 
-      enemiesRef.current = enemiesRef.current.filter((enemy) => enemy.hp > 0)
+      const enemies = enemiesRef.current
+      let enemyWriteIndex = 0
+      for (let i = 0; i < enemies.length; i += 1) {
+        const enemy = enemies[i]
+        if (enemy.hp > 0) {
+          enemies[enemyWriteIndex++] = enemy
+        }
+      }
+      enemies.length = enemyWriteIndex
 
-      enemiesRef.current.forEach((enemy) => {
+      enemies.forEach((enemy) => {
         if (distance(enemy, player) < enemy.size + PLAYER_RADIUS && nowSec > player.invulnUntil) {
           const def = enemyMap.get(enemy.defId)
           const baseDamage = def?.baseDamage ?? 10
@@ -1330,14 +1390,18 @@ export default function Game() {
         }
       })
 
-      const deadEnemies: EnemyEntity[] = []
-      enemiesRef.current = enemiesRef.current.filter((enemy) => {
+      const deadEnemies = deadEnemiesRef.current
+      deadEnemies.length = 0
+      let aliveWriteIndex = 0
+      for (let i = 0; i < enemies.length; i += 1) {
+        const enemy = enemies[i]
         if (enemy.hp <= 0) {
           deadEnemies.push(enemy)
-          return false
+        } else {
+          enemies[aliveWriteIndex++] = enemy
         }
-        return true
-      })
+      }
+      enemies.length = aliveWriteIndex
 
       deadEnemies.forEach((enemy) => {
         addKill()
@@ -1367,7 +1431,7 @@ export default function Game() {
             { id: 'buff', weight: dropConfig.itemWeights.buff }
           ]
           const poolType = weightedPick(weights)
-          const candidates = itemPool.filter((item) => item.type === poolType)
+          const candidates = itemPoolByType[poolType as 'permanent' | 'buff'] ?? itemPool
           const item = candidates[Math.floor(Math.random() * candidates.length)]
           if (item) {
             pickupsRef.current.push({
@@ -1389,7 +1453,10 @@ export default function Game() {
         setBossPhase(bossPhase)
       }
 
-      echoShotsRef.current = echoShotsRef.current.filter((shot) => {
+      const echoShots = echoShotsRef.current
+      let echoWriteIndex = 0
+      for (let i = 0; i < echoShots.length; i += 1) {
+        const shot = echoShots[i]
         if (shot.fireAt <= nowSec) {
           const angle = Math.atan2(mouseRef.current.y - shot.origin.y, mouseRef.current.x - shot.origin.x)
           bulletsRef.current.push({
@@ -1402,12 +1469,16 @@ export default function Game() {
             from: 'player',
             kind: 'echo'
           })
-          return false
+        } else {
+          echoShots[echoWriteIndex++] = shot
         }
-        return true
-      })
+      }
+      echoShots.length = echoWriteIndex
 
-      pickupsRef.current = pickupsRef.current.filter((pickup) => {
+      const pickups = pickupsRef.current
+      let pickupWriteIndex = 0
+      for (let i = 0; i < pickups.length; i += 1) {
+        const pickup = pickups[i]
         pickup.y += pickup.vy * delta
         if (distance(pickup, player) < pickup.radius + PLAYER_RADIUS) {
           const item = getItemById(pickup.itemId)
@@ -1422,10 +1493,13 @@ export default function Game() {
             spawnBurst(player.x, player.y, '#ffd166', 10, 120)
             spawnRing(player.x, player.y, '#ffd166', PLAYER_RADIUS + 10)
           }
-          return false
+          continue
         }
-        return pickup.y < canvasSize.height + 40
-      })
+        if (pickup.y < canvasSize.height + 40) {
+          pickups[pickupWriteIndex++] = pickup
+        }
+      }
+      pickups.length = pickupWriteIndex
 
       const particles = particlesRef.current
       let writeIndex = 0
@@ -1538,26 +1612,56 @@ export default function Game() {
       ctx.globalCompositeOperation = 'screen'
       ctx.translate(canvasSize.width * 0.5, canvasSize.height * 0.45)
       ctx.rotate(starField.bandAngle)
-      const bandWidth = canvasSize.width * 1.5
-      const bandHeight = canvasSize.height * 0.26
-      const bandGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
-      bandGradient.addColorStop(0, 'rgba(40,110,170,0)')
-      bandGradient.addColorStop(0.4, 'rgba(80,160,205,0.06)')
-      bandGradient.addColorStop(0.5, 'rgba(120,200,230,0.12)')
-      bandGradient.addColorStop(0.6, 'rgba(80,160,205,0.06)')
-      bandGradient.addColorStop(1, 'rgba(40,110,170,0)')
-      ctx.fillStyle = bandGradient
-      ctx.fillRect(-bandWidth / 2, -bandHeight / 2, bandWidth, bandHeight)
+      const gradientCache = gradientCacheRef.current
+      if (
+        gradientCache.width !== canvasSize.width ||
+        gradientCache.height !== canvasSize.height ||
+        !gradientCache.bandGradient ||
+        !gradientCache.coreGradient
+      ) {
+        const bandWidth = canvasSize.width * 1.5
+        const bandHeight = canvasSize.height * 0.26
+        const bandGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
+        bandGradient.addColorStop(0, 'rgba(40,110,170,0)')
+        bandGradient.addColorStop(0.4, 'rgba(80,160,205,0.06)')
+        bandGradient.addColorStop(0.5, 'rgba(120,200,230,0.12)')
+        bandGradient.addColorStop(0.6, 'rgba(80,160,205,0.06)')
+        bandGradient.addColorStop(1, 'rgba(40,110,170,0)')
 
-      const coreHeight = bandHeight * 0.35
-      const coreGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
-      coreGradient.addColorStop(0, 'rgba(60,140,190,0)')
-      coreGradient.addColorStop(0.45, 'rgba(110,190,220,0.08)')
-      coreGradient.addColorStop(0.5, 'rgba(140,215,235,0.14)')
-      coreGradient.addColorStop(0.55, 'rgba(110,190,220,0.08)')
-      coreGradient.addColorStop(1, 'rgba(60,140,190,0)')
-      ctx.fillStyle = coreGradient
-      ctx.fillRect(-bandWidth / 2, -coreHeight / 2, bandWidth, coreHeight)
+        const coreHeight = bandHeight * 0.35
+        const coreGradient = ctx.createLinearGradient(-bandWidth / 2, 0, bandWidth / 2, 0)
+        coreGradient.addColorStop(0, 'rgba(60,140,190,0)')
+        coreGradient.addColorStop(0.45, 'rgba(110,190,220,0.08)')
+        coreGradient.addColorStop(0.5, 'rgba(140,215,235,0.14)')
+        coreGradient.addColorStop(0.55, 'rgba(110,190,220,0.08)')
+        coreGradient.addColorStop(1, 'rgba(60,140,190,0)')
+
+        gradientCache.width = canvasSize.width
+        gradientCache.height = canvasSize.height
+        gradientCache.bandWidth = bandWidth
+        gradientCache.bandHeight = bandHeight
+        gradientCache.coreHeight = coreHeight
+        gradientCache.bandGradient = bandGradient
+        gradientCache.coreGradient = coreGradient
+      }
+
+      if (gradientCache.bandGradient && gradientCache.coreGradient) {
+        ctx.fillStyle = gradientCache.bandGradient
+        ctx.fillRect(
+          -gradientCache.bandWidth / 2,
+          -gradientCache.bandHeight / 2,
+          gradientCache.bandWidth,
+          gradientCache.bandHeight
+        )
+
+        ctx.fillStyle = gradientCache.coreGradient
+        ctx.fillRect(
+          -gradientCache.bandWidth / 2,
+          -gradientCache.coreHeight / 2,
+          gradientCache.bandWidth,
+          gradientCache.coreHeight
+        )
+      }
 
       const dustDrift = Math.sin(time * 0.05) * 12
       starField.dust.forEach((dust) => {
