@@ -39,7 +39,8 @@ export const enemyDefinitionSchema = z.object({
   baseSpeed: z.number(),
   baseDamage: z.number(),
   behavior: z.string(),
-  size: z.number().optional()
+  size: z.number().optional(),
+  weight: z.number().optional()
 })
 
 export const levelConfigSchema = z.object({
