@@ -463,6 +463,8 @@ export default function Game() {
   const overheatUntilRef = useRef(0)
   const overloadActiveRef = useRef(false)
   const guaranteedDropRef = useRef(0)
+  const screenShakeRef = useRef(0)
+  const screenShakeIntensityRef = useRef(0)
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -598,6 +600,9 @@ export default function Game() {
     spawnTimerRef.current = 0
     fireTimerRef.current = 0
 
+    screenShakeRef.current = 0
+    screenShakeIntensityRef.current = 0
+
     const initialItem = itemPool[Math.floor(Math.random() * itemPool.length)]
     if (initialItem) {
       const expiresAt = initialItem.type === 'buff' ? timeRef.current + (initialItem.durationSec ?? 10) : undefined
@@ -661,6 +666,7 @@ export default function Game() {
       timeRef.current += delta
       removeExpiredItems(timeRef.current)
       staminaRef.current = Math.min(STAMINA_MAX, staminaRef.current + STAMINA_REGEN_PER_SEC * delta)
+      screenShakeRef.current = Math.max(0, screenShakeRef.current - delta)
       comboTimerRef.current = Math.max(0, comboTimerRef.current - delta)
       if (comboTimerRef.current === 0) {
         comboRef.current = 0
@@ -1416,6 +1422,10 @@ export default function Game() {
             }
             player.invulnUntil = nowSec + 0.5
             audioManager.play('damage')
+            if (damage >= 8) {
+              screenShakeRef.current = 0.2
+              screenShakeIntensityRef.current = Math.min(7, damage * 0.3)
+            }
             if (player.hp <= 0) endGame()
             bullet.x = -9999
           }
@@ -1445,6 +1455,10 @@ export default function Game() {
           }
           player.invulnUntil = nowSec + 0.5
           audioManager.play('damage')
+          if (damage >= 8) {
+            screenShakeRef.current = 0.2
+            screenShakeIntensityRef.current = Math.min(7, damage * 0.3)
+          }
           if (player.hp <= 0) endGame()
         }
       })
@@ -1687,6 +1701,17 @@ export default function Game() {
       ctx.clearRect(0, 0, canvasSize.width, canvasSize.height)
       ctx.fillStyle = 'rgba(3,5,12,0.55)'
       ctx.fillRect(0, 0, canvasSize.width, canvasSize.height)
+
+      const shakeActive = screenShakeRef.current > 0
+      if (shakeActive) {
+        const decay = screenShakeRef.current / 0.2
+        const intensity = screenShakeIntensityRef.current * decay
+        ctx.save()
+        ctx.translate(
+          (Math.random() - 0.5) * intensity * 2,
+          (Math.random() - 0.5) * intensity * 2
+        )
+      }
 
       const time = timeRef.current
       if (
@@ -2130,6 +2155,82 @@ export default function Game() {
           ctx.fillStyle = phaseColor
           ctx.fill()
           ctx.shadowBlur = 0
+        } else if (enemy.behavior === 'charge') {
+          const moveAngle = Math.atan2(enemy.vy, enemy.vx)
+          ctx.save()
+          ctx.rotate(moveAngle)
+          ctx.fillStyle = phaseColor
+          ctx.beginPath()
+          ctx.moveTo(enemy.size * 0.65, 0)
+          ctx.lineTo(-enemy.size * 0.2, -enemy.size * 0.42)
+          ctx.lineTo(-enemy.size * 0.2, enemy.size * 0.42)
+          ctx.closePath()
+          ctx.fill()
+          ctx.restore()
+        } else if (enemy.behavior === 'swarm') {
+          for (let dot = 0; dot < 4; dot++) {
+            const theta = (dot / 4) * Math.PI * 2 + time * 2.4
+            ctx.beginPath()
+            ctx.arc(Math.cos(theta) * enemy.size * 0.52, Math.sin(theta) * enemy.size * 0.52, 2.5, 0, Math.PI * 2)
+            ctx.fillStyle = phaseColor
+            ctx.fill()
+          }
+        } else if (enemy.behavior === 'dash') {
+          const moveAngle = Math.atan2(enemy.vy, enemy.vx)
+          ctx.save()
+          ctx.rotate(moveAngle)
+          ctx.strokeStyle = phaseColor
+          ctx.lineWidth = 1.5
+          for (let line = -1; line <= 1; line++) {
+            ctx.beginPath()
+            ctx.moveTo(-enemy.size * 0.25, line * enemy.size * 0.32)
+            ctx.lineTo(-enemy.size * 0.82, line * enemy.size * 0.32)
+            ctx.stroke()
+          }
+          ctx.restore()
+        } else if (enemy.behavior === 'summon') {
+          ctx.save()
+          ctx.rotate(time * 1.4)
+          ctx.strokeStyle = phaseColor
+          ctx.lineWidth = 1.5
+          ctx.setLineDash([5, 5])
+          ctx.beginPath()
+          ctx.arc(0, 0, enemy.size * 0.62, 0, Math.PI * 2)
+          ctx.stroke()
+          ctx.setLineDash([])
+          ctx.restore()
+        } else if (enemy.behavior === 'bruiser') {
+          ctx.strokeStyle = phaseColor
+          ctx.lineWidth = 2.5
+          ctx.beginPath()
+          for (let seg = 0; seg < 6; seg++) {
+            const theta = (seg / 6) * Math.PI * 2
+            const r = enemy.size * 0.68
+            if (seg === 0) ctx.moveTo(Math.cos(theta) * r, Math.sin(theta) * r)
+            else ctx.lineTo(Math.cos(theta) * r, Math.sin(theta) * r)
+          }
+          ctx.closePath()
+          ctx.stroke()
+        } else if (enemy.behavior === 'shooter') {
+          ctx.beginPath()
+          ctx.arc(0, 0, enemy.size * 0.35, 0, Math.PI * 2)
+          ctx.fillStyle = phaseColor
+          ctx.shadowColor = phaseColor
+          ctx.shadowBlur = 10
+          ctx.fill()
+          ctx.shadowBlur = 0
+        } else if (enemy.behavior === 'blink') {
+          ctx.save()
+          ctx.strokeStyle = phaseColor
+          ctx.lineWidth = 1.5
+          ctx.globalAlpha = 0.5 + 0.4 * Math.sin(time * 6)
+          ctx.beginPath()
+          ctx.moveTo(-enemy.size * 0.55, 0)
+          ctx.lineTo(enemy.size * 0.55, 0)
+          ctx.moveTo(0, -enemy.size * 0.55)
+          ctx.lineTo(0, enemy.size * 0.55)
+          ctx.stroke()
+          ctx.restore()
         }
 
         if (enemy.behavior === 'shielded' && (enemy.shield ?? 0) > 0) {
@@ -2140,6 +2241,20 @@ export default function Game() {
           ctx.lineWidth = 2
           ctx.stroke()
           ctx.globalAlpha = 1
+        }
+
+        if (enemy.dotUntil > time) {
+          const dotPulse = 0.35 + 0.3 * Math.sin(time * 10)
+          ctx.save()
+          ctx.globalAlpha = dotPulse
+          ctx.beginPath()
+          ctx.arc(0, 0, enemy.size + 3, 0, Math.PI * 2)
+          ctx.strokeStyle = '#7dff8b'
+          ctx.lineWidth = 2
+          ctx.shadowColor = '#7dff8b'
+          ctx.shadowBlur = 8
+          ctx.stroke()
+          ctx.restore()
         }
 
         ctx.restore()
@@ -2231,6 +2346,10 @@ export default function Game() {
         ctx.fillText(text.text, text.x, text.y)
         ctx.restore()
       })
+
+      if (shakeActive) {
+        ctx.restore()
+      }
 
       ctx.fillStyle = colors.accentSoft
       ctx.fillRect(32, canvasSize.height - 40, (player.hp / player.maxHp) * 220, 10)

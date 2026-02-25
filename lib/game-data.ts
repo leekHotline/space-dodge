@@ -98,6 +98,32 @@ export const items: ItemDefinition[] = [
     description: { zh: '10s 命中使敌人腐蚀(DoT)', en: '10s corrosion on hit (DoT)' },
     durationSec: 10,
     stats: { dotDamagePct: 8 }
+  },
+  {
+    id: 'I13',
+    name: { zh: '护盾电池', en: 'Shield Battery' },
+    type: 'buff',
+    tags: ['defense'],
+    description: { zh: '12s 护盾上限+50%', en: '12s shield cap +50%' },
+    durationSec: 12,
+    stats: { shieldCapPct: 50 }
+  },
+  {
+    id: 'I14',
+    name: { zh: '能量激波', en: 'Energy Surge' },
+    type: 'buff',
+    tags: ['energy', 'burst'],
+    description: { zh: '8s 能量伤害+30%', en: '8s energy damage +30%' },
+    durationSec: 8,
+    stats: { energyDamagePct: 30 }
+  },
+  {
+    id: 'I15',
+    name: { zh: '精准弹芯', en: 'Precision Core' },
+    type: 'permanent',
+    tags: ['precision'],
+    description: { zh: '精准+20%，子弹速度+15%', en: 'Accuracy +20%, bullet speed +15%' },
+    stats: { accuracyPct: 20, bulletSpeedPct: 15 }
   }
 ]
 
@@ -181,6 +207,72 @@ export const enemies: EnemyDefinition[] = [
     baseSpeed: 1.1,
     baseDamage: 9,
     behavior: 'buffer',
+    weight: 0.6
+  },
+  {
+    id: 'E09',
+    name: { zh: '虚空狙击手', en: 'Void Sniper' },
+    family: 'space',
+    baseHp: 55,
+    baseSpeed: 1.5,
+    baseDamage: 18,
+    behavior: 'sniper',
+    size: 20,
+    weight: 0.8
+  },
+  {
+    id: 'E10',
+    name: { zh: '纳米无人机', en: 'Nano Drone' },
+    family: 'space',
+    baseHp: 18,
+    baseSpeed: 3.0,
+    baseDamage: 5,
+    behavior: 'swarm',
+    size: 10,
+    weight: 1.5
+  },
+  {
+    id: 'E11',
+    name: { zh: '末日轰炸机', en: 'Doom Bomber' },
+    family: 'old-testament',
+    baseHp: 90,
+    baseSpeed: 1.1,
+    baseDamage: 22,
+    behavior: 'bomber',
+    size: 26,
+    weight: 0.65
+  },
+  {
+    id: 'E12',
+    name: { zh: '炽翼飞跃者', en: 'Seraph Leaper' },
+    family: 'old-testament',
+    baseHp: 75,
+    baseSpeed: 1.6,
+    baseDamage: 15,
+    behavior: 'leap',
+    size: 24,
+    weight: 0.75
+  },
+  {
+    id: 'E13',
+    name: { zh: '脉冲喷射者', en: 'Pulse Sprayer' },
+    family: 'space',
+    baseHp: 60,
+    baseSpeed: 1.7,
+    baseDamage: 13,
+    behavior: 'sprayer',
+    size: 22,
+    weight: 0.9
+  },
+  {
+    id: 'E14',
+    name: { zh: '堡垒卫士', en: 'Fortress Guard' },
+    family: 'space',
+    baseHp: 80,
+    baseSpeed: 0.9,
+    baseDamage: 11,
+    behavior: 'shielded',
+    size: 28,
     weight: 0.6
   }
 ]
